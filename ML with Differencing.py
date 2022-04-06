@@ -1,10 +1,12 @@
 # WALK-Forward Validation
 import itertools
+from statistics import linear_regression
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pyparsing import col
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score,mean_absolute_percentage_error
 from sklearn.metrics import mean_squared_error
 from sklearn.svm import SVR
@@ -150,7 +152,7 @@ def one_step_and_multistep_forecast(model,name):
 
     # store 1-step forecast
     df.loc[train_idx,f'{name}_1step_train'] = prev[train_idx] + model.predict(Xtrain)
-    df.loc[test_idx,f'{name}_1step_train'] = prev[test_idx] + model.predict(Xtest)
+    df.loc[test_idx,f'{name}_1step_test'] = prev[test_idx] + model.predict(Xtest)
 
     #generate multi_step forecast
     multistep_predictions = []
@@ -168,26 +170,61 @@ def one_step_and_multistep_forecast(model,name):
         last_x = np.roll(last_x,-1)
         last_x[-1] = p
 
-        # store multi-step forecast
-        df.loc[test_idx,f'{name}_multistep_test'] = last_train + np.cumsum(multistep_predictions)
-        
-        #MAPE of multi-step forecast
-        mape = mean_absolute_percentage_error(test_log_pass,df.loc[test_idx,f'{name}_multistep_test'])
-        print("Test  MAPE (multi-step) :",mape)
+    # store multi-step forecast
+    df.loc[test_idx,f'{name}_multistep_test'] = last_train + np.cumsum(multistep_predictions)
+    
+    #MAPE of multi-step forecast
+    mape = mean_absolute_percentage_error(test_log_pass,df.loc[test_idx,f'{name}_multistep_test'])
+    print("Test  MAPE (multi-step) :",mape)
 
-        # plot 1-step and multi-step forecast
-        cols = [ 'LogPassengers', f'{name}_1step_train',f'{name}_1step_test',f'{name}_multistep_test']
-        df[cols].plot(figsize = (15,5))
+    # plot 1-step and multi-step forecast
+    cols = [ 'LogPassengers', f'{name}_1step_train',f'{name}_1step_test',f'{name}_multistep_test']
+    df[cols].plot(figsize = (15,5))
+    plt.show()
 
-one_step_and_multistep_forecast(SVR(),"SVR")
-
-
-
-
+one_step_and_multistep_forecast(LinearRegression(),"SVR")
+one_step_and_multistep_forecast(RandomForestRegressor(),"RF")
 
 
 
+def multi_output_forecast(model,name):
+    model.fit(Xtrain_m,Ytrain_m)
 
+    # print("Train R^2:",model.score(Xtrain,Ytrain))
+    # print("Test R^2 (1-step):",model.score(Xtest,Ytest))
+
+    # save multi-output to dataframe
+    df.loc[test_idx,f'{name}_multioutput'] = last_train + np.cumsum(model.predict(Xtest_m).flatten())
+
+    #MAPE of multi-step forecast
+    mape = mean_absolute_percentage_error(test_log_pass,df.loc[test_idx,f'{name}_multioutput'])
+    print("Test  MAPE (_multi_output) :",mape)
+
+    # plot all forecasts
+    cols = [ 'LogPassengers', f'{name}_1step_train',f'{name}_1step_test',f'{name}_multistep_test',f'{name}_multioutput']
+    df[cols].plot(figsize = (15,5))
+    plt.show()
+
+multi_output_forecast(LinearRegression(),"LR")    
+
+
+# Creating our SVR that can work with multi output
+class SVRWrapper:
+    def __init__(self,h,**args):
+        self.h = h
+        self.models = [SVR(**args) for _ in range (h)]
+
+    def fit (self, X, Y):
+        for k in range(self.h):
+            self.models[k].fit(X,Y[:,k])
+
+    def predict(self,X):
+        P = [m.predict(X) for m in self.models]
+        return np.hstack(P)
+
+multi_output_forecast(SVRWrapper(Ntest),"SVR")
+
+multi_output_forecast(RandomForestRegressor(),"RF")
 
 
 
